@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div id="app">
+        <p>我是a.a:{{a.a}}</p>
+        <p>我是c:{{c}}</p>
+        <p>我是v-modle=b: {{b}}</p>
+        <input v-modle="b"/>
+    </div>
+    <script>
+    //发布订阅组件
+    function Dep(){
+        this.subs = [];
+    }
+    Dep.prototype.addSub=function(fn){
+        this.subs.push(fn)
+    }
+    Dep.prototype.notify=function(){
+        this.subs.forEach(fn=>{
+            fn.update()
+        })
+    }
+    //实例化vue对象
+    let vue = new Vue({
+        el:'#app',
+        data:{
+            a:{a:1},
+            b:222,
+            c:'ccc'
+        }
+    })
+    //vue对象 封装
+    function Vue(options={}){
+        this.$options = options;
+        let data = this._data = this.$options.data;
+
+        //实现vue.a == this._data.a  
+        for(let key in data){
+            Object.defineProperty(this,key,{
+                    enumerable:true,
+                    get(){
+                        return data[key]
+                    },
+                    set(newValue){
+                        this._data[key] = newValue;
+                    }
+            })
+        }
+        //data所有属性绑定get set 方法；
+        obersver(data)
+        function obersver(data){
+            let dep = new Dep();
+            for(let attr in data){
+                let value = data[attr];
+                if(typeof data[attr] == 'object'){
+                    obersver(data[attr])
+                }
+                Object.defineProperty(data,attr,{
+                        enumerable:true,
+                        get(){
+                            Dep.target && dep.addSub(Dep.target)
+                            return value
+                        },
+                        set(newValue){
+                            if(newValue===value){
+                                return
+                            }
+                            value = newValue;
+                            dep.notify();
+                            if(typeof newValue=='object'){
+                                obersver(newValue)
+                            }
+                        }
+                })
+            }
+        }
+        //编译{{a.a}}并且插入dom根节点中
+        compile(this.$options.el,this)
+        function compile(el,vm){
+            vm.$el = document.querySelector(el);
+            let oFragment = document.createDocumentFragment();
+            while(vm.$el.firstChild){
+                oFragment.appendChild(vm.$el.firstChild)
+            }
+            replaceNode(oFragment,vm)
+            vm.$el.appendChild(oFragment);
+        }
+        //替换dom中的{{a.a}} 为真实的值
+        function replaceNode(el,vm){
+            let reg = /\{\{(.*)\}\}/;
+            Array.from(el.childNodes).forEach(node=>{
+                let text = node.textContent;
+                if(node.nodeType == 3 && reg.test(text)){
+                   let attrArr = RegExp.$1.split('.');
+                   let val = vm
+                   attrArr.forEach(attr=>{
+                        val = val[attr]
+                   })
+                   node.textContent = text.replace(reg,val)
+                   new Watcher(vm,RegExp.$1,function(newValue){
+                        node.textContent = text.replace(reg,newValue)
+                   })
+                }
+                if(node.nodeType==1){
+                    Array.from(node.attributes).forEach(attr=>{
+                        if(attr.name == 'v-modle'){
+                            node.value = vm[attr.value];
+                            new Watcher(vm,attr.value,function(newValue){
+                                node.value = newValue;
+                            })
+                            node.addEventListener('input',function(e){
+                                vm[attr.value] = e.target.value;
+                            })
+                        }
+                    });
+                }
+                if(node.childNodes.length>0){
+                    replaceNode(node,vm)
+                }
+            })
+        }
+    }
+
+    //订阅的事件对象
+    function Watcher(vm,exp,fn){
+        this.fn=fn;
+        this.exp = exp;
+        this.vm = vm;
+        Dep.target = this;
+        let val = vm;
+        let arr = exp.split('.')
+        arr.forEach(function(k){
+            val = val[k]
+        })
+        Dep.target = null;
+    }
+    Watcher.prototype.update=function(){
+        let val = this.vm;
+        let arr = this.exp.split('.')
+        arr.forEach(function(k){
+            val = val[k]
+        })
+        this.fn(val);
+    }
+
+
+    </script>
+</body>
+</html>
